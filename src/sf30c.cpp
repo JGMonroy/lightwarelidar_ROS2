@@ -24,10 +24,11 @@ struct lwScanRev {
 	rclcpp::Time startTime;
 };
 
+//globl vars (ugly)
 sensor_msgs::msg::LaserScan rosScanData;
 lwScanRev scanRev;
-
 std::shared_ptr<rclcpp::Node> node;
+
 
 void initScanRev(lwScanRev* Scan, sensor_msgs::msg::LaserScan& ScanMsg, std::string FrameId) {
 	Scan->revId = 0;
@@ -64,7 +65,6 @@ void generateScanPacket(lwScanRev* Scan, rclcpp::Publisher<sensor_msgs::msg::Las
 
 	ScanPub->publish(ScanMsg);
 }
-
 
 // init driver
 int driverStart(lwSerialPort** Serial, const char* PortName, int32_t BaudRate) 
@@ -185,9 +185,13 @@ float getNextReading(lwSerialPort* Port)
 {
 	char line[64];
 	int lineSize = 0;
+	int tries = 0;
 
-	while (1) {
+	while (tries < 40) 
+	{
 		char recvData;
+		//RCLCPP_INFO(node->get_logger(), "USBreading from USB port...");
+		
 		if (Port->readData((uint8_t*)&recvData, 1) == 1) {
 			if (recvData == '\n') {
 				line[lineSize] = 0;
@@ -199,10 +203,41 @@ float getNextReading(lwSerialPort* Port)
 				if (lineSize == sizeof line) {
 					lineSize = 0;
 				}
+				//RCLCPP_INFO(node->get_logger(), "USBreading adding new digit! waiting for end of line");
+			}
+			else
+			{
+				//RCLCPP_INFO(node->get_logger(), "USBreading garbage char... waiting for valid data");
 			}
 		}
+		else
+		{
+			//RCLCPP_INFO(node->get_logger(), "USBreading error. Got 0 bytes");
+			tries++;
+		}
 	}
+	return -1.0;
 }
+
+
+void PublishLaserReading(float reading, rclcpp::Publisher<sensor_msgs::msg::LaserScan>::SharedPtr ScanPub) 
+{
+	//RCLCPP_INFO(node->get_logger(), "Publishing reading d=%.2f",reading);
+	double scanDuration = 1.0f / 5.0f;
+	
+	// Fill and publish
+	sensor_msgs::msg::LaserScan ScanMsg;
+
+	ScanMsg.header.stamp = node->now();
+	ScanMsg.angle_increment = 0.0;
+	ScanMsg.time_increment = scanDuration;
+	ScanMsg.scan_time = scanDuration;
+	ScanMsg.ranges.push_back(reading);
+	
+	// publish
+	ScanPub->publish(ScanMsg);
+}
+
 
 //============================================================================
 //  ======================================== MAIN ============================
@@ -219,7 +254,7 @@ int main(int argc, char** argv)
 	auto laserScanPub = node->create_publisher<sensor_msgs::msg::LaserScan>("laserpointer", 10);
 	
 	// Configure
-	lwSerialPort* serial = 0;
+	lwSerialPort* serial = 0;	
 	int32_t baudRate = 115200;	// NOTE: The baudrate is ignored when using USB.
 
 	// Parameters
@@ -229,19 +264,33 @@ int main(int argc, char** argv)
 	RCLCPP_INFO(node->get_logger(), "Starting SF30C node");
 
 	// init device
-	if (driverStart(&serial, portName.c_str(), baudRate) != 0) {
-		RCLCPP_ERROR(node->get_logger(), "Failed to start driver for SF30c");
-		return 1;
-	}
+	//if (driverStart(&serial, portName.c_str(), baudRate) != 0) {
+	//	RCLCPP_ERROR(node->get_logger(), "Failed to start driver for SF30c");
+	//	return 1;
+	//}
 
 	// initScanRev(&scanRev, rosScanData, frameId);
 	
-	if (driverScanStart(serial) != 0) {
-		RCLCPP_ERROR(node->get_logger(), "Failed to start scan");
+	//if (driverScanStart(serial) != 0) {
+	//	RCLCPP_ERROR(node->get_logger(), "Failed to start scan");
+	//	return 1;
+	//}
+
+	platformInit();
+
+	// open serial port (USB)
+	serial = platformCreateSerialPort();
+	if (!serial->connect(portName.c_str(), baudRate)) {
+		RCLCPP_ERROR(node->get_logger(), "Could not establish serial connection on %s", portName.c_str());
 		return 1;
+	}
+	else
+	{
+		RCLCPP_INFO(node->get_logger(), "Serial Connection stablished on %s", portName.c_str());
 	}
 
 	// read & publish
+	RCLCPP_INFO(node->get_logger(), "Loop Reading SF30C data");
 	while (rclcpp::ok()) 
 	{
 		//if (driverScan(serial) == 2) {
@@ -249,7 +298,8 @@ int main(int argc, char** argv)
 		//}
 
 		float distanceMeters = getNextReading(serial);
-
+		//RCLCPP_INFO(node->get_logger(), "Distance d=%.2f",distanceMeters);
+		PublishLaserReading(distanceMeters,laserScanPub);
 		rclcpp::spin_some(node);
 	}
 

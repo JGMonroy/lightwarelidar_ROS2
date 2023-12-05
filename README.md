@@ -1,5 +1,13 @@
 # LightWare Optoelectronics ROS2 driver package
 
+## sf30c Node
+This node interfaces with an SF30/C and passes laser scan data to the laserpointer topic. The SF30 laser rangefinder contains a laser and should never be aimed at a person or an animal. Do not look at the beam directly with optical instruments.
+
+Note: The SF30 needs to be configured with the "LightWare Terminal software" or the "LightWare Studio Setup" before being used by this code. 
+- The 'Output type' or 'Active data port' must be set to one of the USB options.
+- The 'USB port output rate' can be configured as required.
+- If you have just configured the SF30 with a terminal program, please disconnect and reconnect the USB port before running this code.
+
 ## sf40c Node
 
 This node interfaces with an SF40/C and passes laser scan data to the laserscan topic.

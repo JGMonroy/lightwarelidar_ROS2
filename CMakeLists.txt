@@ -54,6 +54,13 @@ install(TARGETS
   sf30c
   sf40c
   sf45b
-  DESTINATION lib/${PROJECT_NAME})
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install launch files and related config files.
+install(DIRECTORY
+  launch
+  DESTINATION share/${PROJECT_NAME}/
+)
   
 ament_package()
